@@ -1,0 +1,500 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "API for Avalon game rooms and games.",
+        "title": "Avalon API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/rooms": {
+            "post": {
+                "description": "Create a new room. The requester becomes the host.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rooms"
+                ],
+                "summary": "Create room",
+                "parameters": [
+                    {
+                        "description": "Request body",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.CreateRoomRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.CreateRoomResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request (invalid display_name, password length, or body)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{code}": {
+            "get": {
+                "description": "Get room details and latest game state. No authentication required.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rooms"
+                ],
+                "summary": "Get room",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Room code (6 alphanumeric)",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.GetRoomResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid room code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Room not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{code}/games": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new game in the room. Only the room host may call this. Use Bearer token (from create/join room) or room_player_id in body.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "games"
+                ],
+                "summary": "Create game",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Room code (6 alphanumeric)",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body (room_player_id required if no Bearer token)",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpapi_handler.StartGameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.CreateGameResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request or room has no players",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (token or room_player_id required, or player not in room)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Only host can start a new game",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Room not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/rooms/{code}/join": {
+            "post": {
+                "description": "Join an existing room. Returns room, player, and optional latest game/snapshot.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "rooms"
+                ],
+                "summary": "Join room",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Room code (6 alphanumeric)",
+                        "name": "code",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request body (code in path, not body)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.JoinRoomRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.JoinRoomResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Password required or invalid",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Room not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Display name already taken in this room",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/healthz": {
+            "get": {
+                "description": "Liveness/readiness check. No authentication required.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_httpapi_handler.healthResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "github_com_vntrieu_avalon_internal_store.CreateGameResponse": {
+            "type": "object",
+            "properties": {
+                "game": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.Game"
+                },
+                "latest_game_state_snapshot": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "players": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.GamePlayer"
+                    }
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.CreateRoomRequest": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.CreateRoomResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "room": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.Room"
+                },
+                "room_player": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.RoomPlayer"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.Game": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "ended_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "room_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "waiting | in_progress | finished",
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.GamePlayer": {
+            "type": "object",
+            "properties": {
+                "game_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "joined_at": {
+                    "type": "string"
+                },
+                "left_at": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "room_player_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.GetRoomResponse": {
+            "type": "object",
+            "properties": {
+                "latest_game": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.Game"
+                },
+                "latest_game_state_snapshot": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "room": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.Room"
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.JoinRoomRequest": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.JoinRoomResponse": {
+            "type": "object",
+            "properties": {
+                "expires_at": {
+                    "type": "string"
+                },
+                "game_player": {
+                    "description": "New player's entry in latest game",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.GamePlayer"
+                        }
+                    ]
+                },
+                "latest_game": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.Game"
+                },
+                "latest_game_state_snapshot": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "room": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.Room"
+                },
+                "room_player": {
+                    "$ref": "#/definitions/github_com_vntrieu_avalon_internal_store.RoomPlayer"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.Room": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_vntrieu_avalon_internal_store.RoomPlayer": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_host": {
+                    "type": "boolean"
+                },
+                "room_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_httpapi_handler.StartGameRequest": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "room_player_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_httpapi_handler.healthResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
+        }
+    }
+}

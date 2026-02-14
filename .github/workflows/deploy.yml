@@ -1,0 +1,93 @@
+# Phase 8: CI (build + test) and CD (deploy to EC2 on main).
+# Secrets: EC2_HOST, EC2_SSH_KEY, DEPLOY_USER, DEPLOY_PATH (see plans/phase-08-deploy-ec2-github-actions.md).
+
+name: CI / Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: "1.24"
+
+jobs:
+  ci:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: Build
+        run: go build -v ./cmd/server
+
+      - name: Test
+        run: go test -v -race ./...
+
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: Build Linux ARM64 binary
+        run: |
+          GOOS=linux GOARCH=arm64 go build -o avalon-server ./cmd/server
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avalon-server-linux
+          path: |
+            avalon-server
+            migrations/
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: avalon-server-linux
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Copy binary and migrations to EC2
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            avalon-server \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.DEPLOY_PATH }}/
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -r \
+            migrations \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.EC2_HOST }}:${{ secrets.DEPLOY_PATH }}/
+
+      - name: Restart avalon service
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.EC2_HOST }} \
+            'sudo systemctl restart avalon'
+
+      - name: Smoke check healthz
+        run: |
+          sleep 3
+          curl -sf "http://${{ secrets.EC2_HOST }}:8080/healthz" || true

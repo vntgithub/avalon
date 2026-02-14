@@ -1,0 +1,62 @@
+# Binaries and build artifacts
+main
+avalon
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go build output
+bin/
+build/
+dist/
+*.log
+
+# Coverage and profiling
+*.cover
+*.cov
+coverage.*
+profile.out
+cpu.prof
+mem.prof
+
+# Dependency tools
+vendor/
+
+# IDE/editor settings
+.vscode/
+.idea/
+*.swp
+*.swo
+*.DS_Store
+
+# Go workspace files (Go 1.18+)
+go.work
+go.work.sum
+
+# Module sum if you really know you don't want it (usually you DO want it)
+# go.sum
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Debug (Delve)
+__debug_bin
+
+# Live reload (Air)
+tmp/
+.tmp/
+
+# Backup and temp
+*~
+*.bak
+*.tmp
+
+# OS-specific
+Thumbs.db
+.DS_Store
