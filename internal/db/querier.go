@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	CheckDisplayNameExists(ctx context.Context, arg CheckDisplayNameExistsParams) (bool, error)
 	CheckRoomCodeExists(ctx context.Context, code string) (bool, error)
+	CheckUserEmailExists(ctx context.Context, email string) (bool, error)
 	CountRoomPlayersById(ctx context.Context, id pgtype.UUID) (int64, error)
 	CountRoomPlayersByRoomId(ctx context.Context, roomID pgtype.UUID) (int64, error)
 	CountRoomsById(ctx context.Context, id pgtype.UUID) (int64, error)
@@ -22,7 +23,8 @@ type Querier interface {
 	CreateGamePlayer(ctx context.Context, arg CreateGamePlayerParams) (GamePlayer, error)
 	CreateGameStateSnapshot(ctx context.Context, arg CreateGameStateSnapshotParams) (GameStateSnapshot, error)
 	CreateRoom(ctx context.Context, arg CreateRoomParams) (CreateRoomRow, error)
-	CreateRoomPlayer(ctx context.Context, arg CreateRoomPlayerParams) (RoomPlayer, error)
+	CreateRoomPlayer(ctx context.Context, arg CreateRoomPlayerParams) (CreateRoomPlayerRow, error)
+	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	GetGameById(ctx context.Context, id pgtype.UUID) (Game, error)
 	GetGameEventsByGameId(ctx context.Context, gameID pgtype.UUID) ([]GameEvent, error)
 	GetGameEventsByGameIdAfter(ctx context.Context, arg GetGameEventsByGameIdAfterParams) ([]GameEvent, error)
@@ -32,8 +34,10 @@ type Querier interface {
 	GetRoomById(ctx context.Context, id pgtype.UUID) (Room, error)
 	GetRoomCodeById(ctx context.Context, id pgtype.UUID) (string, error)
 	GetRoomPasswordHashById(ctx context.Context, id pgtype.UUID) (pgtype.Text, error)
-	GetRoomPlayersByGameId(ctx context.Context, gameID pgtype.UUID) ([]RoomPlayer, error)
-	GetRoomPlayersByRoomId(ctx context.Context, roomID pgtype.UUID) ([]RoomPlayer, error)
+	GetRoomPlayersByGameId(ctx context.Context, gameID pgtype.UUID) ([]GetRoomPlayersByGameIdRow, error)
+	GetRoomPlayersByRoomId(ctx context.Context, roomID pgtype.UUID) ([]GetRoomPlayersByRoomIdRow, error)
+	GetUserByEmail(ctx context.Context, email string) (User, error)
+	GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	UpdateGameStatus(ctx context.Context, arg UpdateGameStatusParams) error
 }
 

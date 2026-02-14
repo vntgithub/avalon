@@ -91,7 +91,8 @@ func (h *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.roomStore.CreateRoom(r.Context(), req)
+	userID := UserIDFromRequest(r)
+	resp, err := h.roomStore.CreateRoom(r.Context(), req, userID)
 	if err != nil {
 		log.Printf("[%s] create room error: %v", requestID(r), err)
 		http.Error(w, "failed to create room", http.StatusInternalServerError)
@@ -165,7 +166,8 @@ func (h *RoomHandler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := h.roomStore.JoinRoom(r.Context(), req)
+	userID := UserIDFromRequest(r)
+	resp, err := h.roomStore.JoinRoom(r.Context(), req, userID)
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "room not found") {

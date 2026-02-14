@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/swaggo/http-swagger"
 	"github.com/vntrieu/avalon/internal/httpapi/handler"
@@ -38,6 +39,15 @@ func NewRouter(pool *pgxpool.Pool, tokenSecret []byte, rateLimiter ratelimit.Lim
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	// CORS: handle OPTIONS preflight and set CORS headers so browser clients can call the API.
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: false,
+		MaxAge:           300,
+	}))
 
 	r.Get("/healthz", handler.Healthz)
 
@@ -67,13 +77,25 @@ func NewRouter(pool *pgxpool.Pool, tokenSecret []byte, rateLimiter ratelimit.Lim
 	// Rate limit middleware for create/join (by IP)
 	rateLimitByIP := RateLimitMiddleware(rateLimiter, RateLimitKeyByIP)
 
-	// Room routes (body size limited to 1MB for JSON)
+	// Auth and users (register, login, me)
+	userStore := store.NewUserStore(pool)
+	authHandler := handler.NewAuthHandler(userStore, tokenSecret)
+	r.Route("/api/auth", func(r chi.Router) {
+		r.Use(LimitRequestBody(DefaultMaxBodyBytes))
+		r.With(rateLimitByIP).Post("/register", authHandler.Register)
+		r.With(rateLimitByIP).Post("/login", authHandler.Login)
+	})
+	r.Route("/api/users", func(r chi.Router) {
+		r.With(RequireUser(tokenSecret)).Get("/me", authHandler.GetMe)
+	})
+
+	// Room routes (body size limited to 1MB for JSON; OptionalUser sets user in context when Bearer present)
 	roomHandler := handler.NewRoomHandler(roomStore, tokenSecret)
 	r.Route("/api/rooms", func(r chi.Router) {
 		r.Use(LimitRequestBody(DefaultMaxBodyBytes))
-		r.With(rateLimitByIP).Post("/", roomHandler.CreateRoom)
+		r.With(rateLimitByIP, OptionalUser(tokenSecret)).Post("/", roomHandler.CreateRoom)
 		r.Get("/{code}", roomHandler.GetRoom)
-		r.With(rateLimitByIP).Post("/{code}/join", roomHandler.JoinRoom)
+		r.With(rateLimitByIP, OptionalUser(tokenSecret)).Post("/{code}/join", roomHandler.JoinRoom)
 
 		// Game routes (use room code, not room_id)
 		gameHandler := handler.NewGameHandler(gameStore, roomStore, tokenSecret)

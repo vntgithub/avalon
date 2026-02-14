@@ -124,15 +124,23 @@ WHERE gp.game_id = $1
 ORDER BY rp.created_at ASC
 `
 
-func (q *Queries) GetRoomPlayersByGameId(ctx context.Context, gameID pgtype.UUID) ([]RoomPlayer, error) {
+type GetRoomPlayersByGameIdRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	RoomID      pgtype.UUID        `json:"room_id"`
+	DisplayName string             `json:"display_name"`
+	IsHost      bool               `json:"is_host"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetRoomPlayersByGameId(ctx context.Context, gameID pgtype.UUID) ([]GetRoomPlayersByGameIdRow, error) {
 	rows, err := q.db.Query(ctx, getRoomPlayersByGameId, gameID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RoomPlayer{}
+	items := []GetRoomPlayersByGameIdRow{}
 	for rows.Next() {
-		var i RoomPlayer
+		var i GetRoomPlayersByGameIdRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RoomID,

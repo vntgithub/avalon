@@ -184,26 +184,36 @@ func (q *Queries) GetRoomById(ctx context.Context, id pgtype.UUID) (Room, error)
 }
 
 const getRoomPlayersByRoomId = `-- name: GetRoomPlayersByRoomId :many
-SELECT id, room_id, display_name, is_host, created_at
+SELECT id, room_id, display_name, is_host, user_id, created_at
 FROM room_players
 WHERE room_id = $1
 ORDER BY created_at ASC
 `
 
-func (q *Queries) GetRoomPlayersByRoomId(ctx context.Context, roomID pgtype.UUID) ([]RoomPlayer, error) {
+type GetRoomPlayersByRoomIdRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	RoomID      pgtype.UUID        `json:"room_id"`
+	DisplayName string             `json:"display_name"`
+	IsHost      bool               `json:"is_host"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetRoomPlayersByRoomId(ctx context.Context, roomID pgtype.UUID) ([]GetRoomPlayersByRoomIdRow, error) {
 	rows, err := q.db.Query(ctx, getRoomPlayersByRoomId, roomID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []RoomPlayer{}
+	items := []GetRoomPlayersByRoomIdRow{}
 	for rows.Next() {
-		var i RoomPlayer
+		var i GetRoomPlayersByRoomIdRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.RoomID,
 			&i.DisplayName,
 			&i.IsHost,
+			&i.UserID,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err

@@ -32,6 +32,7 @@ type RoomPlayer struct {
 	RoomID      string    `json:"room_id"`
 	DisplayName string    `json:"display_name"`
 	IsHost      bool      `json:"is_host"`
+	UserID      *string   `json:"user_id,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 }
 
@@ -163,7 +164,8 @@ func timestamptzToTime(ts pgtype.Timestamptz) time.Time {
 }
 
 // CreateRoom creates a new room with the given settings and an initial host player.
-func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest) (*CreateRoomResponse, error) {
+// If userID is non-nil, the host room_players row is linked to that user.
+func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest, userID *string) (*CreateRoomResponse, error) {
 	// Generate unique room code
 	var code string
 	for {
@@ -225,10 +227,19 @@ func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest) (*Cre
 		return nil, fmt.Errorf("convert room id to uuid: %w", err)
 	}
 
+	var userUUID pgtype.UUID
+	if userID != nil && *userID != "" {
+		u, err := stringToUUID(*userID)
+		if err == nil {
+			userUUID = u
+			userUUID.Valid = true
+		}
+	}
 	createPlayerParams := db.CreateRoomPlayerParams{
 		RoomID:      roomUUID,
 		DisplayName: req.DisplayName,
 		IsHost:      true,
+		UserID:      userUUID,
 	}
 	roomPlayerRow, err := txQueries.CreateRoomPlayer(ctx, createPlayerParams)
 	if err != nil {
@@ -296,6 +307,10 @@ func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest) (*Cre
 		IsHost:      roomPlayerRow.IsHost,
 		CreatedAt:   timestamptzToTime(roomPlayerRow.CreatedAt),
 	}
+	if roomPlayerRow.UserID.Valid {
+		s := uuidToString(roomPlayerRow.UserID)
+		roomPlayer.UserID = &s
+	}
 
 	return &CreateRoomResponse{
 		Room:       room,
@@ -304,7 +319,8 @@ func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest) (*Cre
 }
 
 // JoinRoom allows a player to join an existing room by code.
-func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest) (*JoinRoomResponse, error) {
+// If userID is non-nil, the new room_players row is linked to that user.
+func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest, userID *string) (*JoinRoomResponse, error) {
 	// Validate display name
 	if req.DisplayName == "" {
 		return nil, fmt.Errorf("display_name is required")
@@ -364,10 +380,19 @@ func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest) (*JoinRoo
 	defer tx.Rollback(ctx)
 	txQueries := s.queries.WithTx(tx)
 
+	var joinUserUUID pgtype.UUID
+	if userID != nil && *userID != "" {
+		u, err := stringToUUID(*userID)
+		if err == nil {
+			joinUserUUID = u
+			joinUserUUID.Valid = true
+		}
+	}
 	createPlayerParams := db.CreateRoomPlayerParams{
 		RoomID:      roomUUID,
 		DisplayName: req.DisplayName,
 		IsHost:      false,
+		UserID:      joinUserUUID,
 	}
 	roomPlayerRow, err := txQueries.CreateRoomPlayer(ctx, createPlayerParams)
 	if err != nil {
@@ -414,6 +439,10 @@ func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest) (*JoinRoo
 		IsHost:      roomPlayerRow.IsHost,
 		CreatedAt:   timestamptzToTime(roomPlayerRow.CreatedAt),
 	}
+	if roomPlayerRow.UserID.Valid {
+		s := uuidToString(roomPlayerRow.UserID)
+		roomPlayer.UserID = &s
+	}
 
 	return &JoinRoomResponse{
 		Room:       room,
@@ -444,13 +473,18 @@ func (s *RoomStore) GetRoomPlayerInRoom(ctx context.Context, code string, roomPl
 	for i := range players {
 		if uuidToString(players[i].ID) == roomPlayerID {
 			rp := &players[i]
-			return &RoomPlayer{
+			r := &RoomPlayer{
 				ID:          uuidToString(rp.ID),
 				RoomID:      uuidToString(rp.RoomID),
 				DisplayName: rp.DisplayName,
 				IsHost:      rp.IsHost,
 				CreatedAt:   timestamptzToTime(rp.CreatedAt),
-			}, nil
+			}
+			if rp.UserID.Valid {
+				s := uuidToString(rp.UserID)
+				r.UserID = &s
+			}
+			return r, nil
 		}
 	}
 	return nil, fmt.Errorf("player not in room")

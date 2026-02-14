@@ -26,7 +26,7 @@ func TestEventHandler_HandleEvent(t *testing.T) {
 	createRoomReq := store.CreateRoomRequest{
 		DisplayName: "TestPlayer",
 	}
-	roomResp, err := roomStore.CreateRoom(ctx, createRoomReq)
+	roomResp, err := roomStore.CreateRoom(ctx, createRoomReq, nil)
 	if err != nil {
 		t.Fatalf("failed to create room: %v", err)
 	}

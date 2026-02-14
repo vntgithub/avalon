@@ -15,9 +15,9 @@ RETURNING id, code, created_at, updated_at;
 SELECT EXISTS(SELECT 1 FROM room_players WHERE room_id = $1 AND display_name = $2) as exists;
 
 -- name: CreateRoomPlayer :one
-INSERT INTO room_players (room_id, display_name, is_host)
-VALUES ($1, $2, $3)
-RETURNING id, room_id, display_name, is_host, created_at;
+INSERT INTO room_players (room_id, display_name, is_host, user_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, room_id, display_name, is_host, user_id, created_at;
 
 -- name: GetRoomCodeById :one
 SELECT code FROM rooms WHERE id = $1;

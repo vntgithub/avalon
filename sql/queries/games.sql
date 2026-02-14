@@ -4,7 +4,7 @@ FROM rooms
 WHERE id = $1;
 
 -- name: GetRoomPlayersByRoomId :many
-SELECT id, room_id, display_name, is_host, created_at
+SELECT id, room_id, display_name, is_host, user_id, created_at
 FROM room_players
 WHERE room_id = $1
 ORDER BY created_at ASC;

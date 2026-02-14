@@ -103,25 +103,41 @@ func (q *Queries) CreateRoom(ctx context.Context, arg CreateRoomParams) (CreateR
 }
 
 const createRoomPlayer = `-- name: CreateRoomPlayer :one
-INSERT INTO room_players (room_id, display_name, is_host)
-VALUES ($1, $2, $3)
-RETURNING id, room_id, display_name, is_host, created_at
+INSERT INTO room_players (room_id, display_name, is_host, user_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, room_id, display_name, is_host, user_id, created_at
 `
 
 type CreateRoomPlayerParams struct {
 	RoomID      pgtype.UUID `json:"room_id"`
 	DisplayName string      `json:"display_name"`
 	IsHost      bool        `json:"is_host"`
+	UserID      pgtype.UUID `json:"user_id"`
 }
 
-func (q *Queries) CreateRoomPlayer(ctx context.Context, arg CreateRoomPlayerParams) (RoomPlayer, error) {
-	row := q.db.QueryRow(ctx, createRoomPlayer, arg.RoomID, arg.DisplayName, arg.IsHost)
-	var i RoomPlayer
+type CreateRoomPlayerRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	RoomID      pgtype.UUID        `json:"room_id"`
+	DisplayName string             `json:"display_name"`
+	IsHost      bool               `json:"is_host"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) CreateRoomPlayer(ctx context.Context, arg CreateRoomPlayerParams) (CreateRoomPlayerRow, error) {
+	row := q.db.QueryRow(ctx, createRoomPlayer,
+		arg.RoomID,
+		arg.DisplayName,
+		arg.IsHost,
+		arg.UserID,
+	)
+	var i CreateRoomPlayerRow
 	err := row.Scan(
 		&i.ID,
 		&i.RoomID,
 		&i.DisplayName,
 		&i.IsHost,
+		&i.UserID,
 		&i.CreatedAt,
 	)
 	return i, err

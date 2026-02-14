@@ -130,6 +130,48 @@ definitions:
         type: boolean
       room_id:
         type: string
+      user_id:
+        type: string
+    type: object
+  github_com_vntrieu_avalon_internal_store.User:
+    properties:
+      avatar_url:
+        type: string
+      created_at:
+        type: string
+      display_name:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  internal_httpapi_handler.AuthResponse:
+    properties:
+      expires_at:
+        type: string
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/github_com_vntrieu_avalon_internal_store.User'
+    type: object
+  internal_httpapi_handler.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    type: object
+  internal_httpapi_handler.RegisterRequest:
+    properties:
+      display_name:
+        type: string
+      email:
+        type: string
+      password:
+        type: string
     type: object
   internal_httpapi_handler.StartGameRequest:
     properties:
@@ -150,6 +192,75 @@ info:
   title: Avalon API
   version: "1.0"
 paths:
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate with email and password. Returns user and session
+        token.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_httpapi_handler.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_httpapi_handler.AuthResponse'
+        "400":
+          description: Bad request
+          schema:
+            type: string
+        "401":
+          description: Invalid email or password
+          schema:
+            type: string
+        "500":
+          description: Server error
+          schema:
+            type: string
+      summary: Login
+      tags:
+      - auth
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user account. Returns user and session token.
+      parameters:
+      - description: Request body
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_httpapi_handler.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_httpapi_handler.AuthResponse'
+        "400":
+          description: Bad request (validation)
+          schema:
+            type: string
+        "409":
+          description: Email already registered
+          schema:
+            type: string
+        "500":
+          description: Server error
+          schema:
+            type: string
+      summary: Register
+      tags:
+      - auth
   /api/rooms:
     post:
       consumes:
@@ -309,6 +420,25 @@ paths:
       summary: Join room
       tags:
       - rooms
+  /api/users/me:
+    get:
+      description: Return the authenticated user's profile. Requires Bearer token.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_vntrieu_avalon_internal_store.User'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get current user
+      tags:
+      - users
   /healthz:
     get:
       description: Liveness/readiness check. No authentication required.

@@ -23,7 +23,7 @@ func TestCreateRoom(t *testing.T) {
 			},
 		}
 
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		if err != nil {
 			t.Fatalf("CreateRoom failed: %v", err)
 		}
@@ -102,7 +102,7 @@ func TestCreateRoom(t *testing.T) {
 			Password:    "secret123",
 		}
 
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		if err != nil {
 			t.Fatalf("CreateRoom failed: %v", err)
 		}
@@ -134,7 +134,7 @@ func TestCreateRoom(t *testing.T) {
 			DisplayName: "SimplePlayer",
 		}
 
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		if err != nil {
 			t.Fatalf("CreateRoom failed: %v", err)
 		}
@@ -154,7 +154,7 @@ func TestCreateRoom(t *testing.T) {
 				DisplayName: "Player" + string(rune('A'+i)),
 			}
 
-			resp, err := store.CreateRoom(ctx, req)
+			resp, err := store.CreateRoom(ctx, req, nil)
 			if err != nil {
 				t.Fatalf("CreateRoom failed: %v", err)
 			}
@@ -171,7 +171,7 @@ func TestCreateRoom(t *testing.T) {
 			DisplayName: "FormatTest",
 		}
 
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		if err != nil {
 			t.Fatalf("CreateRoom failed: %v", err)
 		}
@@ -207,7 +207,7 @@ func TestCreateRoom(t *testing.T) {
 			DisplayName: "TransactionTest",
 		}
 
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		if err != nil {
 			t.Fatalf("CreateRoom failed: %v", err)
 		}
@@ -254,7 +254,7 @@ func TestCreateRoom_EdgeCases(t *testing.T) {
 
 		// Note: This validation should be done at the handler level
 		// The store will create a room with empty display name if allowed
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		if err != nil {
 			// This is acceptable - validation can happen at store or handler level
 			return
@@ -280,7 +280,7 @@ func TestCreateRoom_EdgeCases(t *testing.T) {
 			},
 		}
 
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		if err != nil {
 			t.Fatalf("CreateRoom failed: %v", err)
 		}
@@ -304,7 +304,7 @@ func TestCreateRoom_EdgeCases(t *testing.T) {
 		}
 
 		before := time.Now()
-		resp, err := store.CreateRoom(ctx, req)
+		resp, err := store.CreateRoom(ctx, req, nil)
 		after := time.Now()
 
 		if err != nil {
@@ -333,7 +333,7 @@ func TestJoinRoom(t *testing.T) {
 		createReq := CreateRoomRequest{
 			DisplayName: "HostPlayer",
 		}
-		createResp, err := store.CreateRoom(ctx, createReq)
+		createResp, err := store.CreateRoom(ctx, createReq, nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -344,7 +344,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "GuestPlayer",
 		}
 
-		joinResp, err := store.JoinRoom(ctx, joinReq)
+		joinResp, err := store.JoinRoom(ctx, joinReq, nil)
 		if err != nil {
 			t.Fatalf("JoinRoom failed: %v", err)
 		}
@@ -405,7 +405,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "SecureHost",
 			Password:    "secret123",
 		}
-		createResp, err := store.CreateRoom(ctx, createReq)
+		createResp, err := store.CreateRoom(ctx, createReq, nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -417,7 +417,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "SecureGuest",
 		}
 
-		joinResp, err := store.JoinRoom(ctx, joinReq)
+		joinResp, err := store.JoinRoom(ctx, joinReq, nil)
 		if err != nil {
 			t.Fatalf("JoinRoom failed: %v", err)
 		}
@@ -433,7 +433,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "GuestPlayer",
 		}
 
-		_, err := store.JoinRoom(ctx, joinReq)
+		_, err := store.JoinRoom(ctx, joinReq, nil)
 		if err == nil {
 			t.Fatal("expected error for non-existent room")
 		}
@@ -448,7 +448,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "ProtectedHost",
 			Password:    "password123",
 		}
-		createResp, err := store.CreateRoom(ctx, createReq)
+		createResp, err := store.CreateRoom(ctx, createReq, nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -459,7 +459,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "GuestPlayer",
 		}
 
-		_, err = store.JoinRoom(ctx, joinReq)
+		_, err = store.JoinRoom(ctx, joinReq, nil)
 		if err == nil {
 			t.Fatal("expected error when password is required but not provided")
 		}
@@ -474,7 +474,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "ProtectedHost2",
 			Password:    "correctpassword",
 		}
-		createResp, err := store.CreateRoom(ctx, createReq)
+		createResp, err := store.CreateRoom(ctx, createReq, nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -486,7 +486,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "GuestPlayer",
 		}
 
-		_, err = store.JoinRoom(ctx, joinReq)
+		_, err = store.JoinRoom(ctx, joinReq, nil)
 		if err == nil {
 			t.Fatal("expected error for invalid password")
 		}
@@ -500,7 +500,7 @@ func TestJoinRoom(t *testing.T) {
 		createReq := CreateRoomRequest{
 			DisplayName: "HostPlayer",
 		}
-		createResp, err := store.CreateRoom(ctx, createReq)
+		createResp, err := store.CreateRoom(ctx, createReq, nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -510,7 +510,7 @@ func TestJoinRoom(t *testing.T) {
 			Code:        createResp.Room.Code,
 			DisplayName: "Player1",
 		}
-		_, err = store.JoinRoom(ctx, joinReq1)
+		_, err = store.JoinRoom(ctx, joinReq1, nil)
 		if err != nil {
 			t.Fatalf("failed to join room: %v", err)
 		}
@@ -520,7 +520,7 @@ func TestJoinRoom(t *testing.T) {
 			Code:        createResp.Room.Code,
 			DisplayName: "Player1",
 		}
-		_, err = store.JoinRoom(ctx, joinReq2)
+		_, err = store.JoinRoom(ctx, joinReq2, nil)
 		if err == nil {
 			t.Fatal("expected error for duplicate display name")
 		}
@@ -534,7 +534,7 @@ func TestJoinRoom(t *testing.T) {
 		createReq := CreateRoomRequest{
 			DisplayName: "HostPlayer",
 		}
-		createResp, err := store.CreateRoom(ctx, createReq)
+		createResp, err := store.CreateRoom(ctx, createReq, nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -545,7 +545,7 @@ func TestJoinRoom(t *testing.T) {
 			DisplayName: "",
 		}
 
-		_, err = store.JoinRoom(ctx, joinReq)
+		_, err = store.JoinRoom(ctx, joinReq, nil)
 		if err == nil {
 			t.Fatal("expected error for empty display name")
 		}
@@ -559,7 +559,7 @@ func TestJoinRoom(t *testing.T) {
 		createReq := CreateRoomRequest{
 			DisplayName: "HostPlayer",
 		}
-		createResp, err := store.CreateRoom(ctx, createReq)
+		createResp, err := store.CreateRoom(ctx, createReq, nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -571,7 +571,7 @@ func TestJoinRoom(t *testing.T) {
 				Code:        createResp.Room.Code,
 				DisplayName: playerName,
 			}
-			_, err := store.JoinRoom(ctx, joinReq)
+			_, err := store.JoinRoom(ctx, joinReq, nil)
 			if err != nil {
 				t.Fatalf("failed to join room as %s: %v", playerName, err)
 			}

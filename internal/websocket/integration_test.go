@@ -99,7 +99,7 @@ func TestWebSocketEventSending(t *testing.T) {
 	createRoomReq := store.CreateRoomRequest{
 		DisplayName: "TestPlayer",
 	}
-	roomResp, err := roomStore.CreateRoom(ctx, createRoomReq)
+	roomResp, err := roomStore.CreateRoom(ctx, createRoomReq, nil)
 	if err != nil {
 		t.Fatalf("failed to create room: %v", err)
 	}
@@ -211,7 +211,7 @@ func TestWebSocketBroadcastToMultipleClients(t *testing.T) {
 	createRoomReq := store.CreateRoomRequest{
 		DisplayName: "HostPlayer",
 	}
-	roomResp, err := roomStore.CreateRoom(ctx, createRoomReq)
+	roomResp, err := roomStore.CreateRoom(ctx, createRoomReq, nil)
 	if err != nil {
 		t.Fatalf("failed to create room: %v", err)
 	}
@@ -221,7 +221,7 @@ func TestWebSocketBroadcastToMultipleClients(t *testing.T) {
 		Code:        roomResp.Room.Code,
 		DisplayName: "Player2",
 	}
-	joinResp, err := roomStore.JoinRoom(ctx, joinReq)
+	joinResp, err := roomStore.JoinRoom(ctx, joinReq, nil)
 	if err != nil {
 		t.Fatalf("failed to join room: %v", err)
 	}

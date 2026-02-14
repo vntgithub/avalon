@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"strings"
 
+	"github.com/vntrieu/avalon/internal/auth"
+	"github.com/vntrieu/avalon/internal/httpapi/handler"
 	"github.com/vntrieu/avalon/internal/ratelimit"
 )
 
@@ -50,6 +54,76 @@ func LimitRequestBody(maxBytes int64) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// OptionalUser returns middleware that reads Authorization Bearer and, if a valid user session token,
+// sets the user ID in context. If absent or invalid, continues without user (anonymous).
+func OptionalUser(tokenSecret []byte) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if len(tokenSecret) == 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+			bearer := r.Header.Get("Authorization")
+			if bearer == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			const prefix = "Bearer "
+			if !strings.HasPrefix(bearer, prefix) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			token := strings.TrimSpace(bearer[len(prefix):])
+			if token == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			claims, err := auth.VerifyUserToken(token, tokenSecret)
+			if err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := context.WithValue(r.Context(), handler.UserIDContextKey, claims.UserID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// RequireUser returns middleware that requires a valid user session token.
+// If absent or invalid, responds with 401 and does not call next.
+func RequireUser(tokenSecret []byte) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if len(tokenSecret) == 0 {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			bearer := r.Header.Get("Authorization")
+			if bearer == "" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			const prefix = "Bearer "
+			if !strings.HasPrefix(bearer, prefix) {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			token := strings.TrimSpace(bearer[len(prefix):])
+			if token == "" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			claims, err := auth.VerifyUserToken(token, tokenSecret)
+			if err != nil {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			ctx := context.WithValue(r.Context(), handler.UserIDContextKey, claims.UserID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

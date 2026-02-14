@@ -67,4 +67,16 @@ type RoomPlayer struct {
 	DisplayName string             `json:"display_name"`
 	IsHost      bool               `json:"is_host"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UserID      pgtype.UUID        `json:"user_id"`
+}
+
+type User struct {
+	ID           pgtype.UUID        `json:"id"`
+	Email        string             `json:"email"`
+	PasswordHash string             `json:"password_hash"`
+	DisplayName  string             `json:"display_name"`
+	AvatarUrl    pgtype.Text        `json:"avatar_url"`
+	SettingsJson []byte             `json:"settings_json"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
