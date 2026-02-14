@@ -14,8 +14,6 @@ definitions:
     type: object
   github_com_vntrieu_avalon_internal_store.CreateRoomRequest:
     properties:
-      display_name:
-        type: string
       password:
         type: string
       settings:
@@ -78,8 +76,6 @@ definitions:
   github_com_vntrieu_avalon_internal_store.JoinRoomRequest:
     properties:
       code:
-        type: string
-      display_name:
         type: string
       password:
         type: string
@@ -178,8 +174,6 @@ definitions:
       config:
         additionalProperties: true
         type: object
-      room_player_id:
-        type: string
     type: object
   internal_httpapi_handler.healthResponse:
     properties:
@@ -265,9 +259,10 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new room. The requester becomes the host.
+      description: Create a new room. Requires user token; host display_name is taken
+        from user profile.
       parameters:
-      - description: Request body
+      - description: Request body (password, settings optional)
         in: body
         name: body
         required: true
@@ -281,13 +276,19 @@ paths:
           schema:
             $ref: '#/definitions/github_com_vntrieu_avalon_internal_store.CreateRoomResponse'
         "400":
-          description: Bad request (invalid display_name, password length, or body)
+          description: Bad request (password length or body)
+          schema:
+            type: string
+        "401":
+          description: Unauthorized (user token required)
           schema:
             type: string
         "500":
           description: Server error
           schema:
             type: string
+      security:
+      - BearerAuth: []
       summary: Create room
       tags:
       - rooms
@@ -326,15 +327,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: Create a new game in the room. Only the room host may call this.
-        Use Bearer token (from create/join room) or room_player_id in body.
+      description: Create a new game in the room. Requires user token; only the room
+        host may call this. Room player is resolved from the authenticated user.
       parameters:
       - description: Room code (6 alphanumeric)
         in: path
         name: code
         required: true
         type: string
-      - description: Request body (room_player_id required if no Bearer token)
+      - description: Request body (config optional)
         in: body
         name: body
         schema:
@@ -351,12 +352,11 @@ paths:
           schema:
             type: string
         "401":
-          description: Unauthorized (token or room_player_id required, or player not
-            in room)
+          description: Unauthorized (user token required)
           schema:
             type: string
         "403":
-          description: Only host can start a new game
+          description: Only host can start a new game, or user not in room
           schema:
             type: string
         "404":
@@ -376,15 +376,15 @@ paths:
     post:
       consumes:
       - application/json
-      description: Join an existing room. Returns room, player, and optional latest
-        game/snapshot.
+      description: Join an existing room. Requires user token; display_name is taken
+        from user profile.
       parameters:
       - description: Room code (6 alphanumeric)
         in: path
         name: code
         required: true
         type: string
-      - description: Request body (code in path, not body)
+      - description: Request body (password optional)
         in: body
         name: body
         required: true
@@ -402,7 +402,7 @@ paths:
           schema:
             type: string
         "401":
-          description: Password required or invalid
+          description: Unauthorized or password required/invalid
           schema:
             type: string
         "404":
@@ -417,6 +417,8 @@ paths:
           description: Server error
           schema:
             type: string
+      security:
+      - BearerAuth: []
       summary: Join room
       tags:
       - rooms

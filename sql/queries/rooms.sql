@@ -33,3 +33,8 @@ SELECT COUNT(*) FROM room_players WHERE id = $1;
 
 -- name: CountRoomPlayersByRoomId :one
 SELECT COUNT(*) FROM room_players WHERE room_id = $1;
+
+-- name: GetRoomPlayerByRoomIdAndUserId :one
+SELECT id, room_id, display_name, is_host, user_id, created_at
+FROM room_players
+WHERE room_id = $1 AND user_id = $2;

@@ -34,6 +34,7 @@ type Querier interface {
 	GetRoomById(ctx context.Context, id pgtype.UUID) (Room, error)
 	GetRoomCodeById(ctx context.Context, id pgtype.UUID) (string, error)
 	GetRoomPasswordHashById(ctx context.Context, id pgtype.UUID) (pgtype.Text, error)
+	GetRoomPlayerByRoomIdAndUserId(ctx context.Context, arg GetRoomPlayerByRoomIdAndUserIdParams) (GetRoomPlayerByRoomIdAndUserIdRow, error)
 	GetRoomPlayersByGameId(ctx context.Context, gameID pgtype.UUID) ([]GetRoomPlayersByGameIdRow, error)
 	GetRoomPlayersByRoomId(ctx context.Context, roomID pgtype.UUID) ([]GetRoomPlayersByRoomIdRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)

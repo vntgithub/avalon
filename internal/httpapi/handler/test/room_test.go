@@ -14,21 +14,31 @@ import (
 	"github.com/vntrieu/avalon/internal/store"
 )
 
-func setupTestHandler(t *testing.T) (*handler.RoomHandler, *pgxpool.Pool) {
+func setupTestHandler(t *testing.T) (h *handler.RoomHandler, userStore *store.UserStore, hostUser *store.User, pool *pgxpool.Pool) {
 	t.Helper()
-	pool := store.SetupTestDB(t)
+	pool = store.SetupTestDB(t)
 	roomStore := store.NewRoomStore(pool)
-	h := handler.NewRoomHandler(roomStore, nil)
-	return h, pool
+	userStore = store.NewUserStore(pool)
+	user, err := userStore.CreateUser(context.Background(), "test@example.com", "password123", "TestPlayer")
+	if err != nil {
+		t.Fatalf("create test user: %v", err)
+	}
+	h = handler.NewRoomHandler(roomStore, userStore, nil)
+	return h, userStore, user, pool
+}
+
+func requestWithUserID(r *http.Request, userID string) *http.Request {
+	ctx := r.Context()
+	ctx = context.WithValue(ctx, handler.UserIDContextKey, userID)
+	return r.WithContext(ctx)
 }
 
 func TestCreateRoomHandler(t *testing.T) {
 	t.Run("success without password", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
 
 		reqBody := map[string]interface{}{
-			"display_name": "TestPlayer",
 			"settings": map[string]interface{}{
 				"max_players": 10,
 			},
@@ -36,6 +46,7 @@ func TestCreateRoomHandler(t *testing.T) {
 		body, _ := json.Marshal(reqBody)
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req = requestWithUserID(req, hostUser.ID)
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
 
@@ -49,7 +60,7 @@ func TestCreateRoomHandler(t *testing.T) {
 		if resp.Room == nil || resp.Room.Code == "" {
 			t.Error("expected non-nil room with code")
 		}
-		if resp.RoomPlayer == nil || resp.RoomPlayer.DisplayName != "TestPlayer" || !resp.RoomPlayer.IsHost {
+		if resp.RoomPlayer == nil || resp.RoomPlayer.DisplayName != hostUser.DisplayName || !resp.RoomPlayer.IsHost {
 			t.Error("expected host room player")
 		}
 		if w.Header().Get("Content-Type") != "application/json" {
@@ -58,11 +69,12 @@ func TestCreateRoomHandler(t *testing.T) {
 	})
 
 	t.Run("success with password", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		body, _ := json.Marshal(map[string]interface{}{"display_name": "SecurePlayer", "password": "secret123"})
+		body, _ := json.Marshal(map[string]interface{}{"password": "secret123"})
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req = requestWithUserID(req, hostUser.ID)
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
 		if w.Code != http.StatusCreated {
@@ -77,40 +89,39 @@ func TestCreateRoomHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("missing display_name", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+	t.Run("unauthorized when no user token", func(t *testing.T) {
+		h, _, _, pool := setupTestHandler(t) // no user in context
 		defer pool.Close()
 		body, _ := json.Marshal(map[string]interface{}{"password": "secret123"})
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("expected 400, got %d", w.Code)
-		}
-		if w.Body.String() != "display_name is required\n" {
-			t.Errorf("unexpected body: %q", w.Body.String())
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d body=%s", w.Code, w.Body.String())
 		}
 	})
 
-	t.Run("empty display_name", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+	t.Run("empty display_name from user", func(t *testing.T) {
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		body, _ := json.Marshal(map[string]interface{}{"display_name": ""})
+		body, _ := json.Marshal(map[string]interface{}{})
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req = requestWithUserID(req, hostUser.ID)
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("expected 400, got %d", w.Code)
+		if w.Code != http.StatusCreated {
+			t.Errorf("expected 201 (user has display name), got %d", w.Code)
 		}
 	})
 
 	t.Run("invalid JSON body", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader([]byte("invalid json")))
 		req.Header.Set("Content-Type", "application/json")
+		req = requestWithUserID(req, hostUser.ID)
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
 		if w.Code != http.StatusBadRequest {
@@ -122,10 +133,11 @@ func TestCreateRoomHandler(t *testing.T) {
 	})
 
 	t.Run("wrong HTTP method", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		body, _ := json.Marshal(map[string]interface{}{"display_name": "TestPlayer"})
+		body, _ := json.Marshal(map[string]interface{}{})
 		req := httptest.NewRequest(http.MethodGet, "/api/rooms", bytes.NewReader(body))
+		req = requestWithUserID(req, hostUser.ID)
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
 		if w.Code != http.StatusMethodNotAllowed {
@@ -133,23 +145,23 @@ func TestCreateRoomHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("empty body", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+	t.Run("empty body with user", func(t *testing.T) {
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader([]byte("{}")))
 		req.Header.Set("Content-Type", "application/json")
+		req = requestWithUserID(req, hostUser.ID)
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
-		if w.Code != http.StatusBadRequest {
-			t.Errorf("expected 400, got %d", w.Code)
+		if w.Code != http.StatusCreated {
+			t.Errorf("expected 201 (empty body valid), got %d", w.Code)
 		}
 	})
 
 	t.Run("complex settings", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
 		reqBody := map[string]interface{}{
-			"display_name": "ComplexPlayer",
 			"settings": map[string]interface{}{
 				"max_players": 10, "game_variant": "classic", "time_per_round": 300,
 				"nested": map[string]interface{}{"key": "value", "number": 42},
@@ -158,6 +170,7 @@ func TestCreateRoomHandler(t *testing.T) {
 		body, _ := json.Marshal(reqBody)
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req = requestWithUserID(req, hostUser.ID)
 		w := httptest.NewRecorder()
 		h.CreateRoom(w, req)
 		if w.Code != http.StatusCreated {
@@ -187,20 +200,26 @@ func chiCtxWithCode(code string) func(*http.Request) *http.Request {
 
 func TestJoinRoomHandler(t *testing.T) {
 	t.Run("success join room without password", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		createBody, _ := json.Marshal(map[string]interface{}{"display_name": "HostPlayer"})
+		guestUser, err := userStore.CreateUser(context.Background(), "guest@example.com", "password123", "GuestPlayer")
+		if err != nil {
+			t.Fatalf("create guest user: %v", err)
+		}
+		createBody, _ := json.Marshal(map[string]interface{}{})
 		createReq := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(createBody))
 		createReq.Header.Set("Content-Type", "application/json")
+		createReq = requestWithUserID(createReq, hostUser.ID)
 		createW := httptest.NewRecorder()
 		h.CreateRoom(createW, createReq)
 		var createResp store.CreateRoomResponse
 		json.NewDecoder(createW.Body).Decode(&createResp)
 
-		joinBody, _ := json.Marshal(map[string]interface{}{"display_name": "GuestPlayer"})
+		joinBody, _ := json.Marshal(map[string]interface{}{})
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/"+createResp.Room.Code+"/join", bytes.NewReader(joinBody))
 		joinReq.Header.Set("Content-Type", "application/json")
 		joinReq = chiCtxWithCode(createResp.Room.Code)(joinReq)
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
 
@@ -223,20 +242,23 @@ func TestJoinRoomHandler(t *testing.T) {
 	})
 
 	t.Run("success join room with password", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		createBody, _ := json.Marshal(map[string]interface{}{"display_name": "SecureHost", "password": "secret123"})
+		guestUser, _ := userStore.CreateUser(context.Background(), "secureguest@example.com", "password123", "SecureGuest")
+		createBody, _ := json.Marshal(map[string]interface{}{"password": "secret123"})
 		createReq := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(createBody))
 		createReq.Header.Set("Content-Type", "application/json")
+		createReq = requestWithUserID(createReq, hostUser.ID)
 		createW := httptest.NewRecorder()
 		h.CreateRoom(createW, createReq)
 		var createResp store.CreateRoomResponse
 		json.NewDecoder(createW.Body).Decode(&createResp)
 
-		joinBody, _ := json.Marshal(map[string]interface{}{"display_name": "SecureGuest", "password": "secret123"})
+		joinBody, _ := json.Marshal(map[string]interface{}{"password": "secret123"})
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/"+createResp.Room.Code+"/join", bytes.NewReader(joinBody))
 		joinReq.Header.Set("Content-Type", "application/json")
 		joinReq = chiCtxWithCode(createResp.Room.Code)(joinReq)
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
 		if joinW.Code != http.StatusOK {
@@ -250,12 +272,14 @@ func TestJoinRoomHandler(t *testing.T) {
 	})
 
 	t.Run("room not found", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, _, pool := setupTestHandler(t)
 		defer pool.Close()
-		joinBody, _ := json.Marshal(map[string]interface{}{"display_name": "GuestPlayer"})
+		guestUser, _ := userStore.CreateUser(context.Background(), "guest2@example.com", "password123", "GuestPlayer")
+		joinBody, _ := json.Marshal(map[string]interface{}{})
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/INVALID/join", bytes.NewReader(joinBody))
 		joinReq.Header.Set("Content-Type", "application/json")
 		joinReq = chiCtxWithCode("INVALID")(joinReq)
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
 		if joinW.Code != http.StatusNotFound {
@@ -267,20 +291,23 @@ func TestJoinRoomHandler(t *testing.T) {
 	})
 
 	t.Run("password required for protected room", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		createBody, _ := json.Marshal(map[string]interface{}{"display_name": "ProtectedHost", "password": "password123"})
+		guestUser, _ := userStore.CreateUser(context.Background(), "guest3@example.com", "password123", "GuestPlayer")
+		createBody, _ := json.Marshal(map[string]interface{}{"password": "password123"})
 		createReq := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(createBody))
 		createReq.Header.Set("Content-Type", "application/json")
+		createReq = requestWithUserID(createReq, hostUser.ID)
 		createW := httptest.NewRecorder()
 		h.CreateRoom(createW, createReq)
 		var createResp store.CreateRoomResponse
 		json.NewDecoder(createW.Body).Decode(&createResp)
 
-		joinBody, _ := json.Marshal(map[string]interface{}{"display_name": "GuestPlayer"})
+		joinBody, _ := json.Marshal(map[string]interface{}{})
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/"+createResp.Room.Code+"/join", bytes.NewReader(joinBody))
 		joinReq.Header.Set("Content-Type", "application/json")
 		joinReq = chiCtxWithCode(createResp.Room.Code)(joinReq)
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
 		if joinW.Code != http.StatusUnauthorized {
@@ -292,20 +319,23 @@ func TestJoinRoomHandler(t *testing.T) {
 	})
 
 	t.Run("invalid password", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		createBody, _ := json.Marshal(map[string]interface{}{"display_name": "ProtectedHost2", "password": "correctpassword"})
+		guestUser, _ := userStore.CreateUser(context.Background(), "guest4@example.com", "password123", "GuestPlayer")
+		createBody, _ := json.Marshal(map[string]interface{}{"password": "correctpassword"})
 		createReq := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(createBody))
 		createReq.Header.Set("Content-Type", "application/json")
+		createReq = requestWithUserID(createReq, hostUser.ID)
 		createW := httptest.NewRecorder()
 		h.CreateRoom(createW, createReq)
 		var createResp store.CreateRoomResponse
 		json.NewDecoder(createW.Body).Decode(&createResp)
 
-		joinBody, _ := json.Marshal(map[string]interface{}{"display_name": "GuestPlayer", "password": "wrongpassword"})
+		joinBody, _ := json.Marshal(map[string]interface{}{"password": "wrongpassword"})
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/"+createResp.Room.Code+"/join", bytes.NewReader(joinBody))
 		joinReq.Header.Set("Content-Type", "application/json")
 		joinReq = chiCtxWithCode(createResp.Room.Code)(joinReq)
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
 		if joinW.Code != http.StatusUnauthorized {
@@ -317,27 +347,32 @@ func TestJoinRoomHandler(t *testing.T) {
 	})
 
 	t.Run("display name already taken", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		createBody, _ := json.Marshal(map[string]interface{}{"display_name": "HostPlayer"})
+		guestUser, _ := userStore.CreateUser(context.Background(), "player1@example.com", "password123", "Player1")
+		createBody, _ := json.Marshal(map[string]interface{}{})
 		createReq := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(createBody))
 		createReq.Header.Set("Content-Type", "application/json")
+		createReq = requestWithUserID(createReq, hostUser.ID)
 		createW := httptest.NewRecorder()
 		h.CreateRoom(createW, createReq)
 		var createResp store.CreateRoomResponse
 		json.NewDecoder(createW.Body).Decode(&createResp)
 
-		joinBody1, _ := json.Marshal(map[string]interface{}{"display_name": "Player1"})
+		joinBody1, _ := json.Marshal(map[string]interface{}{})
 		joinReq1 := httptest.NewRequest(http.MethodPost, "/api/rooms/"+createResp.Room.Code+"/join", bytes.NewReader(joinBody1))
 		joinReq1.Header.Set("Content-Type", "application/json")
 		joinReq1 = chiCtxWithCode(createResp.Room.Code)(joinReq1)
+		joinReq1 = requestWithUserID(joinReq1, guestUser.ID)
 		joinW1 := httptest.NewRecorder()
 		h.JoinRoom(joinW1, joinReq1)
 
-		joinBody2, _ := json.Marshal(map[string]interface{}{"display_name": "Player1"})
+		guestUser2, _ := userStore.CreateUser(context.Background(), "player1b@example.com", "password123", "Player1")
+		joinBody2, _ := json.Marshal(map[string]interface{}{})
 		joinReq2 := httptest.NewRequest(http.MethodPost, "/api/rooms/"+createResp.Room.Code+"/join", bytes.NewReader(joinBody2))
 		joinReq2.Header.Set("Content-Type", "application/json")
 		joinReq2 = chiCtxWithCode(createResp.Room.Code)(joinReq2)
+		joinReq2 = requestWithUserID(joinReq2, guestUser2.ID)
 		joinW2 := httptest.NewRecorder()
 		h.JoinRoom(joinW2, joinReq2)
 		if joinW2.Code != http.StatusConflict {
@@ -348,8 +383,8 @@ func TestJoinRoomHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("missing display_name", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+	t.Run("unauthorized when no user for join", func(t *testing.T) {
+		h, _, _, pool := setupTestHandler(t)
 		defer pool.Close()
 		joinBody, _ := json.Marshal(map[string]interface{}{})
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/ABC123/join", bytes.NewReader(joinBody))
@@ -357,34 +392,35 @@ func TestJoinRoomHandler(t *testing.T) {
 		joinReq = chiCtxWithCode("ABC123")(joinReq)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
-		if joinW.Code != http.StatusBadRequest {
-			t.Errorf("expected 400, got %d", joinW.Code)
-		}
-		if joinW.Body.String() != "display_name is required\n" {
-			t.Errorf("unexpected body: %q", joinW.Body.String())
+		if joinW.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", joinW.Code)
 		}
 	})
 
-	t.Run("empty display_name", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+	t.Run("join with user returns 404 for invalid room", func(t *testing.T) {
+		h, userStore, _, pool := setupTestHandler(t)
 		defer pool.Close()
-		joinBody, _ := json.Marshal(map[string]interface{}{"display_name": ""})
+		guestUser, _ := userStore.CreateUser(context.Background(), "join404@example.com", "password123", "Guest")
+		joinBody, _ := json.Marshal(map[string]interface{}{})
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/ABC123/join", bytes.NewReader(joinBody))
 		joinReq.Header.Set("Content-Type", "application/json")
 		joinReq = chiCtxWithCode("ABC123")(joinReq)
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
-		if joinW.Code != http.StatusBadRequest {
-			t.Errorf("expected 400, got %d", joinW.Code)
+		if joinW.Code != http.StatusNotFound {
+			t.Errorf("expected 404 for invalid room, got %d", joinW.Code)
 		}
 	})
 
 	t.Run("invalid JSON body", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, _, pool := setupTestHandler(t)
 		defer pool.Close()
+		guestUser, _ := userStore.CreateUser(context.Background(), "invalidjson@example.com", "password123", "Guest")
 		joinReq := httptest.NewRequest(http.MethodPost, "/api/rooms/ABC123/join", bytes.NewReader([]byte("invalid json")))
 		joinReq.Header.Set("Content-Type", "application/json")
 		joinReq = chiCtxWithCode("ABC123")(joinReq)
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
 		if joinW.Code != http.StatusBadRequest {
@@ -396,10 +432,12 @@ func TestJoinRoomHandler(t *testing.T) {
 	})
 
 	t.Run("wrong HTTP method", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, userStore, _, pool := setupTestHandler(t)
 		defer pool.Close()
-		joinBody, _ := json.Marshal(map[string]interface{}{"display_name": "GuestPlayer"})
+		guestUser, _ := userStore.CreateUser(context.Background(), "wrongmethod@example.com", "password123", "GuestPlayer")
+		joinBody, _ := json.Marshal(map[string]interface{}{})
 		joinReq := httptest.NewRequest(http.MethodGet, "/api/rooms/ABC123/join", bytes.NewReader(joinBody))
+		joinReq = requestWithUserID(joinReq, guestUser.ID)
 		joinW := httptest.NewRecorder()
 		h.JoinRoom(joinW, joinReq)
 		if joinW.Code != http.StatusMethodNotAllowed {
@@ -410,11 +448,12 @@ func TestJoinRoomHandler(t *testing.T) {
 
 func TestGetRoomHandler(t *testing.T) {
 	t.Run("success returns room and latest game", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, hostUser, pool := setupTestHandler(t)
 		defer pool.Close()
-		createBody, _ := json.Marshal(map[string]interface{}{"display_name": "Host"})
+		createBody, _ := json.Marshal(map[string]interface{}{})
 		createReq := httptest.NewRequest(http.MethodPost, "/api/rooms", bytes.NewReader(createBody))
 		createReq.Header.Set("Content-Type", "application/json")
+		createReq = requestWithUserID(createReq, hostUser.ID)
 		createW := httptest.NewRecorder()
 		h.CreateRoom(createW, createReq)
 		if createW.Code != http.StatusCreated {
@@ -449,7 +488,7 @@ func TestGetRoomHandler(t *testing.T) {
 	})
 
 	t.Run("not found for unknown code", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, _, pool := setupTestHandler(t)
 		defer pool.Close()
 		getReq := httptest.NewRequest(http.MethodGet, "/api/rooms/ZZZZ99", nil)
 		getReq = getReq.WithContext(context.WithValue(getReq.Context(), chi.RouteCtxKey, &chi.Context{
@@ -463,7 +502,7 @@ func TestGetRoomHandler(t *testing.T) {
 	})
 
 	t.Run("invalid room code format", func(t *testing.T) {
-		h, pool := setupTestHandler(t)
+		h, _, _, pool := setupTestHandler(t)
 		defer pool.Close()
 		for _, code := range []string{"x", "12345", "1234567", "!!!!!!"} {
 			getReq := httptest.NewRequest(http.MethodGet, "/api/rooms/"+code, nil)

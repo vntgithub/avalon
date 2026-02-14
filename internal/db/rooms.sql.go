@@ -191,3 +191,37 @@ func (q *Queries) GetRoomPasswordHashById(ctx context.Context, id pgtype.UUID) (
 	err := row.Scan(&password_hash)
 	return password_hash, err
 }
+
+const getRoomPlayerByRoomIdAndUserId = `-- name: GetRoomPlayerByRoomIdAndUserId :one
+SELECT id, room_id, display_name, is_host, user_id, created_at
+FROM room_players
+WHERE room_id = $1 AND user_id = $2
+`
+
+type GetRoomPlayerByRoomIdAndUserIdParams struct {
+	RoomID pgtype.UUID `json:"room_id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+type GetRoomPlayerByRoomIdAndUserIdRow struct {
+	ID          pgtype.UUID        `json:"id"`
+	RoomID      pgtype.UUID        `json:"room_id"`
+	DisplayName string             `json:"display_name"`
+	IsHost      bool               `json:"is_host"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetRoomPlayerByRoomIdAndUserId(ctx context.Context, arg GetRoomPlayerByRoomIdAndUserIdParams) (GetRoomPlayerByRoomIdAndUserIdRow, error) {
+	row := q.db.QueryRow(ctx, getRoomPlayerByRoomIdAndUserId, arg.RoomID, arg.UserID)
+	var i GetRoomPlayerByRoomIdAndUserIdRow
+	err := row.Scan(
+		&i.ID,
+		&i.RoomID,
+		&i.DisplayName,
+		&i.IsHost,
+		&i.UserID,
+		&i.CreatedAt,
+	)
+	return i, err
+}

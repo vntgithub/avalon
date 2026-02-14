@@ -121,7 +121,12 @@ const docTemplate = `{
         },
         "/api/rooms": {
             "post": {
-                "description": "Create a new room. The requester becomes the host.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Create a new room. Requires user token; host display_name is taken from user profile.",
                 "consumes": [
                     "application/json"
                 ],
@@ -134,7 +139,7 @@ const docTemplate = `{
                 "summary": "Create room",
                 "parameters": [
                     {
-                        "description": "Request body",
+                        "description": "Request body (password, settings optional)",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -151,7 +156,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad request (invalid display_name, password length, or body)",
+                        "description": "Bad request (password length or body)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized (user token required)",
                         "schema": {
                             "type": "string"
                         }
@@ -219,7 +230,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Create a new game in the room. Only the room host may call this. Use Bearer token (from create/join room) or room_player_id in body.",
+                "description": "Create a new game in the room. Requires user token; only the room host may call this. Room player is resolved from the authenticated user.",
                 "consumes": [
                     "application/json"
                 ],
@@ -239,7 +250,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Request body (room_player_id required if no Bearer token)",
+                        "description": "Request body (config optional)",
                         "name": "body",
                         "in": "body",
                         "schema": {
@@ -261,13 +272,13 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Unauthorized (token or room_player_id required, or player not in room)",
+                        "description": "Unauthorized (user token required)",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "403": {
-                        "description": "Only host can start a new game",
+                        "description": "Only host can start a new game, or user not in room",
                         "schema": {
                             "type": "string"
                         }
@@ -289,7 +300,12 @@ const docTemplate = `{
         },
         "/api/rooms/{code}/join": {
             "post": {
-                "description": "Join an existing room. Returns room, player, and optional latest game/snapshot.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Join an existing room. Requires user token; display_name is taken from user profile.",
                 "consumes": [
                     "application/json"
                 ],
@@ -309,7 +325,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Request body (code in path, not body)",
+                        "description": "Request body (password optional)",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -332,7 +348,7 @@ const docTemplate = `{
                         }
                     },
                     "401": {
-                        "description": "Password required or invalid",
+                        "description": "Unauthorized or password required/invalid",
                         "schema": {
                             "type": "string"
                         }
@@ -432,9 +448,6 @@ const docTemplate = `{
         "github_com_vntrieu_avalon_internal_store.CreateRoomRequest": {
             "type": "object",
             "properties": {
-                "display_name": {
-                    "type": "string"
-                },
                 "password": {
                     "type": "string"
                 },
@@ -528,9 +541,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "code": {
-                    "type": "string"
-                },
-                "display_name": {
                     "type": "string"
                 },
                 "password": {
@@ -682,9 +692,6 @@ const docTemplate = `{
                 "config": {
                     "type": "object",
                     "additionalProperties": true
-                },
-                "room_player_id": {
-                    "type": "string"
                 }
             }
         },

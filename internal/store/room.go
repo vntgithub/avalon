@@ -37,10 +37,10 @@ type RoomPlayer struct {
 }
 
 // CreateRoomRequest contains the data needed to create a room.
+// DisplayName comes from the authenticated user (not in body).
 type CreateRoomRequest struct {
-	Password    string                 `json:"password,omitempty"`
-	DisplayName string                 `json:"display_name"`
-	Settings    map[string]interface{} `json:"settings,omitempty"`
+	Password string                 `json:"password,omitempty"`
+	Settings map[string]interface{} `json:"settings,omitempty"`
 }
 
 // CreateRoomResponse contains the response after creating a room.
@@ -53,10 +53,10 @@ type CreateRoomResponse struct {
 }
 
 // JoinRoomRequest contains the data needed to join a room.
+// DisplayName comes from the authenticated user (not in body).
 type JoinRoomRequest struct {
-	Code        string `json:"code"`
-	Password    string `json:"password,omitempty"`
-	DisplayName string `json:"display_name"`
+	Code     string `json:"code"`
+	Password string `json:"password,omitempty"`
 }
 
 // JoinRoomResponse contains the response after joining a room.
@@ -164,8 +164,11 @@ func timestamptzToTime(ts pgtype.Timestamptz) time.Time {
 }
 
 // CreateRoom creates a new room with the given settings and an initial host player.
-// If userID is non-nil, the host room_players row is linked to that user.
-func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest, userID *string) (*CreateRoomResponse, error) {
+// displayName is the host's display name (from the authenticated user). userID must be non-nil (required).
+func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest, displayName string, userID *string) (*CreateRoomResponse, error) {
+	if displayName == "" {
+		return nil, fmt.Errorf("display_name is required")
+	}
 	// Generate unique room code
 	var code string
 	for {
@@ -237,7 +240,7 @@ func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest, userI
 	}
 	createPlayerParams := db.CreateRoomPlayerParams{
 		RoomID:      roomUUID,
-		DisplayName: req.DisplayName,
+		DisplayName: displayName,
 		IsHost:      true,
 		UserID:      userUUID,
 	}
@@ -319,10 +322,9 @@ func (s *RoomStore) CreateRoom(ctx context.Context, req CreateRoomRequest, userI
 }
 
 // JoinRoom allows a player to join an existing room by code.
-// If userID is non-nil, the new room_players row is linked to that user.
-func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest, userID *string) (*JoinRoomResponse, error) {
-	// Validate display name
-	if req.DisplayName == "" {
+// displayName is the joining player's display name (from the authenticated user). userID must be non-nil (required).
+func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest, displayName string, userID *string) (*JoinRoomResponse, error) {
+	if displayName == "" {
 		return nil, fmt.Errorf("display_name is required")
 	}
 
@@ -356,7 +358,7 @@ func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest, userID *s
 
 	checkParams := db.CheckDisplayNameExistsParams{
 		RoomID:      roomUUID,
-		DisplayName: req.DisplayName,
+		DisplayName: displayName,
 	}
 	exists, err := s.queries.CheckDisplayNameExists(ctx, checkParams)
 	if err != nil {
@@ -390,7 +392,7 @@ func (s *RoomStore) JoinRoom(ctx context.Context, req JoinRoomRequest, userID *s
 	}
 	createPlayerParams := db.CreateRoomPlayerParams{
 		RoomID:      roomUUID,
-		DisplayName: req.DisplayName,
+		DisplayName: displayName,
 		IsHost:      false,
 		UserID:      joinUserUUID,
 	}
@@ -488,6 +490,45 @@ func (s *RoomStore) GetRoomPlayerInRoom(ctx context.Context, code string, roomPl
 		}
 	}
 	return nil, fmt.Errorf("player not in room")
+}
+
+// GetRoomPlayerByUserInRoom returns the room player for the given user in the room identified by code.
+// Returns (nil, error) if room not found or user is not a player in that room.
+func (s *RoomStore) GetRoomPlayerByUserInRoom(ctx context.Context, code string, userID string) (*RoomPlayer, error) {
+	roomRow, err := s.queries.GetRoomByCode(ctx, code)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("room not found")
+		}
+		return nil, fmt.Errorf("get room by code: %w", err)
+	}
+	roomUUID := roomRow.ID
+	userUUID, err := stringToUUID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user_id: %w", err)
+	}
+	row, err := s.queries.GetRoomPlayerByRoomIdAndUserId(ctx, db.GetRoomPlayerByRoomIdAndUserIdParams{
+		RoomID: roomUUID,
+		UserID: userUUID,
+	})
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("user not in room")
+		}
+		return nil, fmt.Errorf("get room player by user: %w", err)
+	}
+	r := &RoomPlayer{
+		ID:          uuidToString(row.ID),
+		RoomID:      uuidToString(row.RoomID),
+		DisplayName: row.DisplayName,
+		IsHost:      row.IsHost,
+		CreatedAt:   timestamptzToTime(row.CreatedAt),
+	}
+	if row.UserID.Valid {
+		s := uuidToString(row.UserID)
+		r.UserID = &s
+	}
+	return r, nil
 }
 
 // GetRoom returns room info, latest game, and latest snapshot for the given room code.

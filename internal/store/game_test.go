@@ -19,10 +19,8 @@ func TestCreateGame(t *testing.T) {
 	// Helper function to create a room with players
 	createRoomWithPlayers := func(t *testing.T, numPlayers int) *CreateRoomResponse {
 		t.Helper()
-		createRoomReq := CreateRoomRequest{
-			DisplayName: "HostPlayer",
-		}
-		createRoomResp, err := roomStore.CreateRoom(ctx, createRoomReq, nil)
+		createRoomReq := CreateRoomRequest{}
+		createRoomResp, err := roomStore.CreateRoom(ctx, createRoomReq, "HostPlayer", nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}
@@ -30,10 +28,10 @@ func TestCreateGame(t *testing.T) {
 		// Add additional players
 		for i := 1; i < numPlayers; i++ {
 			joinReq := JoinRoomRequest{
-				Code:        createRoomResp.Room.Code,
-				DisplayName: "Player" + string(rune('A'+i)),
+				Code: createRoomResp.Room.Code,
 			}
-			_, err := roomStore.JoinRoom(ctx, joinReq, nil)
+			displayName := "Player" + string(rune('A'+i))
+			_, err := roomStore.JoinRoom(ctx, joinReq, displayName, nil)
 			if err != nil {
 				t.Fatalf("failed to join room: %v", err)
 			}
@@ -407,10 +405,8 @@ func TestCreateGame_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("nil config", func(t *testing.T) {
-		createRoomReq := CreateRoomRequest{
-			DisplayName: "HostPlayer",
-		}
-		roomResp, err := roomStore.CreateRoom(ctx, createRoomReq, nil)
+		createRoomReq := CreateRoomRequest{}
+		roomResp, err := roomStore.CreateRoom(ctx, createRoomReq, "TestPlayer", nil)
 		if err != nil {
 			t.Fatalf("failed to create room: %v", err)
 		}

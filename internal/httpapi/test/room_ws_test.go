@@ -21,7 +21,7 @@ func TestRoomWebSocket_Unauthorized(t *testing.T) {
 	defer pool.Close()
 
 	roomStore := store.NewRoomStore(pool)
-	createResp, err := roomStore.CreateRoom(context.Background(), store.CreateRoomRequest{DisplayName: "Host"}, nil)
+	createResp, err := roomStore.CreateRoom(context.Background(), store.CreateRoomRequest{}, "Host", nil)
 	if err != nil {
 		t.Fatalf("create room: %v", err)
 	}
@@ -62,7 +62,7 @@ func setupRoomWSWithEngine(t *testing.T) (http.Handler, string, string, *pgxpool
 	t.Helper()
 	pool := store.SetupTestDB(t)
 	roomStore := store.NewRoomStore(pool)
-	createResp, err := roomStore.CreateRoom(context.Background(), store.CreateRoomRequest{DisplayName: "Host"}, nil)
+	createResp, err := roomStore.CreateRoom(context.Background(), store.CreateRoomRequest{}, "Host", nil)
 	if err != nil {
 		t.Fatalf("create room: %v", err)
 	}
@@ -139,9 +139,8 @@ func TestRoomWebSocket_ChatBroadcast(t *testing.T) {
 	// Add second player and get token
 	roomStore := store.NewRoomStore(pool)
 	joinResp, err := roomStore.JoinRoom(context.Background(), store.JoinRoomRequest{
-		Code:        code,
-		DisplayName: "Player2",
-	}, nil)
+		Code: code,
+	}, "Player2", nil)
 	if err != nil {
 		t.Fatalf("join room: %v", err)
 	}

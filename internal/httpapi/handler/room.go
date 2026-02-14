@@ -25,14 +25,16 @@ const (
 var roomCodePattern = regexp.MustCompile(`^[A-Za-z0-9]{6}$`)
 
 // RoomHandler handles room-related HTTP requests.
+// Create room and join room require a valid user token; display_name is taken from the user profile.
 type RoomHandler struct {
 	roomStore   *store.RoomStore
+	userStore   *store.UserStore
 	tokenSecret []byte
 }
 
-// NewRoomHandler creates a new RoomHandler. If tokenSecret is non-empty, create/join responses include a WebSocket auth token.
-func NewRoomHandler(roomStore *store.RoomStore, tokenSecret []byte) *RoomHandler {
-	return &RoomHandler{roomStore: roomStore, tokenSecret: tokenSecret}
+// NewRoomHandler creates a new RoomHandler. userStore is used to resolve display_name from the authenticated user.
+func NewRoomHandler(roomStore *store.RoomStore, userStore *store.UserStore, tokenSecret []byte) *RoomHandler {
+	return &RoomHandler{roomStore: roomStore, userStore: userStore, tokenSecret: tokenSecret}
 }
 
 func validateDisplayName(displayName string) string {
@@ -60,14 +62,16 @@ func validateRoomCode(code string) bool {
 // CreateRoom handles POST /api/rooms
 //
 // @Summary      Create room
-// @Description  Create a new room. The requester becomes the host.
+// @Description  Create a new room. Requires user token; host display_name is taken from user profile.
 // @Tags         rooms
 // @Accept       json
 // @Produce      json
-// @Param        body  body      store.CreateRoomRequest   true  "Request body"
+// @Param        body  body      store.CreateRoomRequest   true  "Request body (password, settings optional)"
 // @Success      201   {object}  store.CreateRoomResponse
-// @Failure      400   {string}  string  "Bad request (invalid display_name, password length, or body)"
+// @Failure      400   {string}  string  "Bad request (password length or body)"
+// @Failure      401   {string}  string  "Unauthorized (user token required)"
 // @Failure      500   {string}  string  "Server error"
+// @Security     BearerAuth
 // @Router       /api/rooms [post]
 func (h *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -75,24 +79,33 @@ func (h *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := UserIDFromRequest(r)
+	if userID == nil || *userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user, err := h.userStore.GetUserByID(r.Context(), *userID)
+	if err != nil || user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if msg := validateDisplayName(user.DisplayName); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	displayName := strings.TrimSpace(user.DisplayName)
+
 	var req store.CreateRoomRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-
-	if msg := validateDisplayName(req.DisplayName); msg != "" {
-		http.Error(w, msg, http.StatusBadRequest)
-		return
-	}
-	req.DisplayName = strings.TrimSpace(req.DisplayName)
 	if msg := validatePasswordLength(req.Password); msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 
-	userID := UserIDFromRequest(r)
-	resp, err := h.roomStore.CreateRoom(r.Context(), req, userID)
+	resp, err := h.roomStore.CreateRoom(r.Context(), req, displayName, userID)
 	if err != nil {
 		log.Printf("[%s] create room error: %v", requestID(r), err)
 		http.Error(w, "failed to create room", http.StatusInternalServerError)
@@ -120,24 +133,41 @@ func (h *RoomHandler) CreateRoom(w http.ResponseWriter, r *http.Request) {
 // JoinRoom handles POST /api/rooms/{code}/join
 //
 // @Summary      Join room
-// @Description  Join an existing room. Returns room, player, and optional latest game/snapshot.
+// @Description  Join an existing room. Requires user token; display_name is taken from user profile.
 // @Tags         rooms
 // @Accept       json
 // @Produce      json
 // @Param        code  path      string                    true   "Room code (6 alphanumeric)"
-// @Param        body  body      store.JoinRoomRequest     true   "Request body (code in path, not body)"
+// @Param        body  body      store.JoinRoomRequest     true   "Request body (password optional)"
 // @Success      200   {object}  store.JoinRoomResponse
 // @Failure      400   {string}  string  "Bad request"
-// @Failure      401   {string}  string  "Password required or invalid"
+// @Failure      401   {string}  string  "Unauthorized or password required/invalid"
 // @Failure      404   {string}  string  "Room not found"
 // @Failure      409   {string}  string  "Display name already taken in this room"
 // @Failure      500   {string}  string  "Server error"
+// @Security     BearerAuth
 // @Router       /api/rooms/{code}/join [post]
 func (h *RoomHandler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
+	userID := UserIDFromRequest(r)
+	if userID == nil || *userID == "" {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	user, err := h.userStore.GetUserByID(r.Context(), *userID)
+	if err != nil || user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if msg := validateDisplayName(user.DisplayName); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	displayName := strings.TrimSpace(user.DisplayName)
 
 	code := chi.URLParam(r, "code")
 	if code == "" {
@@ -155,19 +185,12 @@ func (h *RoomHandler) JoinRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Code = code
-
-	if msg := validateDisplayName(req.DisplayName); msg != "" {
-		http.Error(w, msg, http.StatusBadRequest)
-		return
-	}
-	req.DisplayName = strings.TrimSpace(req.DisplayName)
 	if msg := validatePasswordLength(req.Password); msg != "" {
 		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 
-	userID := UserIDFromRequest(r)
-	resp, err := h.roomStore.JoinRoom(r.Context(), req, userID)
+	resp, err := h.roomStore.JoinRoom(r.Context(), req, displayName, userID)
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "room not found") {

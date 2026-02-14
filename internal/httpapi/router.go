@@ -89,17 +89,17 @@ func NewRouter(pool *pgxpool.Pool, tokenSecret []byte, rateLimiter ratelimit.Lim
 		r.With(RequireUser(tokenSecret)).Get("/me", authHandler.GetMe)
 	})
 
-	// Room routes (body size limited to 1MB for JSON; OptionalUser sets user in context when Bearer present)
-	roomHandler := handler.NewRoomHandler(roomStore, tokenSecret)
+	// Room routes (create/join require user token; display_name from user profile)
+	roomHandler := handler.NewRoomHandler(roomStore, userStore, tokenSecret)
 	r.Route("/api/rooms", func(r chi.Router) {
 		r.Use(LimitRequestBody(DefaultMaxBodyBytes))
-		r.With(rateLimitByIP, OptionalUser(tokenSecret)).Post("/", roomHandler.CreateRoom)
+		r.With(rateLimitByIP, RequireUser(tokenSecret)).Post("/", roomHandler.CreateRoom)
 		r.Get("/{code}", roomHandler.GetRoom)
-		r.With(rateLimitByIP, OptionalUser(tokenSecret)).Post("/{code}/join", roomHandler.JoinRoom)
+		r.With(rateLimitByIP, RequireUser(tokenSecret)).Post("/{code}/join", roomHandler.JoinRoom)
 
-		// Game routes (use room code, not room_id)
+		// Game routes (create game requires user token; room player resolved from user)
 		gameHandler := handler.NewGameHandler(gameStore, roomStore, tokenSecret)
-		r.Post("/{code}/games", gameHandler.CreateGame) // POST /api/rooms/{code}/games (host only)
+		r.With(RequireUser(tokenSecret)).Post("/{code}/games", gameHandler.CreateGame) // POST /api/rooms/{code}/games (host only)
 
 		// WebSocket route for game events
 		r.Get("/{code}/games/{game_id}/ws", wsHandler.HandleWebSocket)
